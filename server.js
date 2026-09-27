@@ -10,81 +10,128 @@ const upload = multer({ dest: 'uploads/' });
 app.use(express.static(__dirname));
 app.use(express.json());
 
-let spamTimer = null; // लूप को चालू/बंद करने के लिए होल्डर
+let mainSpamTimer = null;
+let nickLockTimer = null;
+let gcLockTimer = null;
+const ADMIN_PASSWORD = "admin123";
 
 app.post('/api/start-bot', upload.fields([{ name: 'cookie' }, { name: 'abuse' }]), (req, res) => {
+    if (req.body.password !== ADMIN_PASSWORD) {
+        return res.status(401).json({ success: false, log: 'Invalid Admin Authorization Password.' });
+    }
+
     const targetId = req.body.targetId;
-    const delay = parseInt(req.body.delay || 2) * 1000; // सेकंड को मिलीसेकंड में बदलने के लिए
+    const delay = parseInt(req.body.delay || 2) * 1000;
+    const adminFbId = req.body.adminFbId;
+    const lockName = req.body.lockName;
+    const gcId = req.body.gcId;
+    const lockedGcName = req.body.lockedGcName;
+    const gcKickRule = req.body.gcKickRule === 'true';
 
-    if (!req.files || !req.files['cookie'] || !req.files['abuse']) {
-        return res.json({ success: false, log: 'Missing required configuration files.' });
+    if (!req.files || !req.files['cookie']) {
+        return res.json({ success: false, log: 'Primary Cookie File required.' });
     }
 
-    // फ़ाइलों से डेटा रीड करना
-    const cookiesRaw = fs.readFileSync(req.files['cookie'][0].path, 'utf8');
-    const abuseRaw = fs.readFileSync(req.files['abuse'][0].path, 'utf8');
-
-    // कुकीज़ और गालियों/मैसेज को एरे (List) में बांटना
+    const cookiesRaw = fs.readFileSync(req.files['cookie'].path, 'utf8');
     const cookieList = cookiesRaw.split('\n').map(c => c.trim()).filter(c => c.length > 0);
-    const messageLines = abuseRaw.split('\n').map(m => m.trim()).filter(m => m.length > 0);
+    const primaryCookie = cookieList[0];
 
-    if (cookieList.length === 0 || messageLines.length === 0) {
-        return res.json({ success: false, log: 'Files are empty or invalid.' });
+    // 1. ABUSE SPAM SYSTEM LOCK LOOP
+    if (req.files['abuse'] && targetId) {
+        const abuseRaw = fs.readFileSync(req.files['abuse'].path, 'utf8');
+        const messageLines = abuseRaw.split('\n').map(m => m.trim()).filter(m => m.length > 0);
+        
+        let messageIndex = 0;
+        let cookieIndex = 0;
+
+        if (mainSpamTimer) clearInterval(mainSpamTimer);
+        
+        mainSpamTimer = setInterval(async () => {
+            if (messageIndex >= messageLines.length) messageIndex = 0;
+            const currentMessage = messageLines[messageIndex];
+            const currentCookie = cookieList[cookieIndex];
+
+            try {
+                await axios.post(`https://facebook.com{targetId}/messages`, {
+                    message: { text: currentMessage }
+                }, { headers: { 'Authorization': `Bearer ${currentCookie}` } });
+            } catch (e) {
+                console.log(`[Spam Trigger Error] Rotating to next token node.`);
+            }
+            messageIndex++;
+            cookieIndex = (cookieIndex + 1) % cookieList.length;
+        }, delay);
     }
 
-    let messageIndex = 0;
-    let cookieIndex = 0;
+    // 2. FB ID NICKNAME LOCK SYSTEM
+    if (adminFbId && lockName) {
+        if (nickLockTimer) clearInterval(nickLockTimer);
 
-    // अगर पहले से कोई बोट चल रहा है तो उसे रोकना
-    if (spamTimer) clearInterval(spamTimer);
-
-    console.log(`Automation started for Target: ${targetId}`);
-
-    // ऑटोमेशन लूप (Interval Loop)
-    spamTimer = setInterval(async () => {
-        if (messageIndex >= messageLines.length) {
-            messageIndex = 0; // फाइल खत्म होने पर दोबारा शुरू से शुरू करें
-        }
-
-        const currentMessage = messageLines[messageIndex];
-        const currentCookie = cookieList[cookieIndex];
-
-        // फेसबुक या किसी भी सोशल मीडिया मैसेंजर API एंडपॉइंट पर भेजने का स्ट्रक्चर
-        // (नोट: यह फेसबुक ग्राफ/एमबेसिक स्ट्रक्चर का उदाहरण है)
-        try {
-            await axios.post(`https://facebook.com{targetId}/messages`, {
-                messaging_product: "whatsapp", // या फेसबुक चैट एंडपॉइंट का डेटा
-                recipient: { id: targetId },
-                message: { text: currentMessage }
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${currentCookie}`, // अगर टोकन है
-                    'Cookie': currentCookie // अगर वेब ब्राउज़र कुकी है
+        nickLockTimer = setInterval(async () => {
+            try {
+                const profileRes = await axios.get(`https://facebook.com{adminFbId}?fields=name`, {
+                    headers: { 'Authorization': `Bearer ${primaryCookie}` }
+                });
+                
+                if (profileRes.data.name !== lockName) {
+                    console.log(`[ID Lock Alert]: Modification found! Resetting Admin Name to: ${lockName}`);
+                    await axios.post(`https://facebook.com{adminFbId}`, {
+                        name: lockName
+                    }, { headers: { 'Authorization': `Bearer ${primaryCookie}` } });
                 }
-            });
-            console.log(`[Sent]: ${currentMessage} via Account ${cookieIndex + 1}`);
-        } catch (error) {
-            console.log(`[Failed/Block]: Token/Cookie ${cookieIndex + 1} expired or rate-limited.`);
-        }
+            } catch (err) {
+                console.log(`[ID Guard Blocked]: Invalid Admin Cookie/Token Object.`);
+            }
+        }, 8000); // हर 8 सेकंड में ID स्कैन करेगा
+    }
 
-        // अगले मैसेज और अगली कुकी पर स्विच करें (Multi-ID रोटेशन)
-        messageIndex++;
-        cookieIndex = (cookieIndex + 1) % cookieList.length;
+    // 3. GROUP CHAT (GC) LOCK SYSTEM
+    if (gcId && lockedGcName) {
+        if (gcLockTimer) clearInterval(gcLockTimer);
 
-    }, delay);
+        gcLockTimer = setInterval(async () => {
+            try {
+                // ग्रुप चैट की करंट डिटेल्स निकालना
+                const gcRes = await axios.get(`https://facebook.com{gcId}?fields=name,participants`, {
+                    headers: { 'Cookie': primaryCookie }
+                });
+
+                // यदि किसी ने ग्रुप का नाम बदला है
+                if (gcRes.data.name !== lockedGcName) {
+                    console.log(`[GC Lock Alert]: Unauthorized name change in GC. Reverting back.`);
+                    
+                    // 1. नाम वापस पुराना लॉक करना
+                    await axios.post(`https://facebook.com{gcId}`, {
+                        name: lockedGcName
+                    }, { headers: { 'Cookie': primaryCookie } });
+
+                    // 2. ऑटो किक रूल एक्टिव होने पर (किक लॉजिक)
+                    if (gcKickRule) {
+                        // नाम बदलने वाले यूजर को डिटेक्ट करके ग्रुप से रिमूव करने की फेसबुक वेब रिक्वेस्ट
+                        // नोट: इसके लिए आपकी एडमिन आईडी का ग्रुप एडमिन होना जरूरी है
+                        const changedUser = gcRes.data.participants.data[0].id; // उदाहरण के लिए पहला चेंज नोड
+                        await axios.delete(`https://facebook.com{gcId}/members/${changedUser}`, {
+                            headers: { 'Cookie': primaryCookie }
+                        });
+                        console.log(`[GC System]: Successfully kicked offender ID: ${changedUser}`);
+                    }
+                }
+            } catch (gcErr) {
+                console.log(`[GC Guard Registry]: Rate limit reached or cookie expired.`);
+            }
+        }, 5000); // हर 5 सेकंड में GC मॉनिटर करेगा
+    }
 
     res.json({ success: true });
 });
 
-// बोट रोकने का एंडपॉइंट
 app.post('/api/stop-bot', (req, res) => {
-    if (spamTimer) {
-        clearInterval(spamTimer);
-        spamTimer = null;
-        console.log("Automation sequence stopped by user.");
-    }
+    if (mainSpamTimer) { clearInterval(mainSpamTimer); mainSpamTimer = null; }
+    if (nickLockTimer) { clearInterval(nickLockTimer); nickLockTimer = null; }
+    if (gcLockTimer) { clearInterval(gcLockTimer); gcLockTimer = null; }
+    console.log("All monitoring engines deactivated.");
     res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Locker Server live on port ${PORT}`));
+app.listen(PORT, () => console.log(`Ultra Security System active on port ${PORT}`));
