@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi User Locker Bot Ultra Pro</title>
+    <style>
+        body { background-color: #121212; color: white; font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 20px; }
+        .container { max-width: 500px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        h1 { color: #3498db; font-size: 22px; }
+        .status { background: #e74c3c; padding: 10px; margin: 15px 0; border-radius: 5px; font-weight: bold; transition: 0.3s; }
+        .tabs { display: flex; justify-content: space-around; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab { background: #2c3e50; padding: 8px 5px; border-radius: 5px; cursor: pointer; font-size: 12px; width: 22%; margin-bottom: 5px; }
+        .tab.active { background: #3498db; }
+        .panel-section { display: none; }
+        .panel-section.active { display: block; }
+        label { display: block; text-align: left; margin: 10px 20px 2px 20px; font-size: 13px; color: #bbb; }
+        input[type="text"], input[type="file"], input[type="number"], input[type="password"], select { width: 90%; padding: 10px; margin: 5px 0 15px 0; background: #2c3e50; border: none; color: white; border-radius: 5px; box-sizing: border-box; }
+        .btn-group { display: flex; justify-content: space-between; margin-top: 15px; padding: 0 20px; }
+        .btn { width: 48%; padding: 12px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        .btn-start { background: #3498db; color: white; }
+        .btn-stop { background: #7f8c8d; color: white; }
+        .logs-box { background: #000; color: #2ecc71; text-align: left; padding: 15px; font-family: monospace; height: 160px; overflow-y: auto; border-radius: 5px; margin-top: 20px; font-size: 13px; }
+        #auth-screen { background: #1e1e1e; padding: 40px 20px; border-radius: 10px; max-width: 400px; margin: 100px auto; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<!-- ADMIN LOGIN GUARD -->
+<div id="auth-screen">
+    <h2>🔒 Admin Panel Login</h2>
+    <label>Enter Secret Admin Password</label>
+    <input type="password" id="adminPass" placeholder="Default: admin123">
+    <button class="btn btn-start" style="width:90%;" onclick="verifyAdmin()">Unlock Panel</button>
+</div>
+
+<!-- MAIN BOT CONTAINER -->
+<div class="container hidden" id="main-container">
+    <h1>🔥 MULTI USER PETER BOT 🔥</h1>
+    <div class="status" id="statusText">Status: Disconnected</div>
+
+    <div class="tabs">
+        <div class="tab active" id="tab-main" onclick="switchTab('main')">Main</div>
+        <div class="tab" id="tab-abuse" onclick="switchTab('abuse')">Abuse</div>
+        <div class="tab" id="tab-lock" onclick="switchTab('lock')">ID Lock</div>
+        <div class="tab" id="tab-gc" onclick="switchTab('gc')">GC Lock</div>
+    </div>
+
+    <form id="botForm">
+        <!-- MAIN TAB PANEL -->
+        <div id="main-panel" class="panel-section active">
+            <label>Select Cookie File (.txt or .json)</label>
+            <input type="file" id="cookieFile" accept=".txt,.json">
+            <label>Target User/Inbox ID</label>
+            <input type="text" id="targetId" placeholder="e.g. 61578560554830">
+        </div>
+
+        <!-- ABUSE TAB PANEL -->
+        <div id="abuse-panel" class="panel-section">
+            <label>Select Abuse Notepad File (.txt)</label>
+            <input type="file" id="abuseFile" accept=".txt">
+            <label>Speed Delay (Seconds)</label>
+            <input type="number" id="delayTime" value="2" min="1">
+        </div>
+
+        <!-- ID NICKNAME LOCK PANEL -->
+        <div id="lock-panel" class="panel-section">
+            <label>Admin FB ID (To Protect)</label>
+            <input type="text" id="adminFbId" placeholder="Enter your Admin FB Profile ID">
+            <label>Forced Nickname To Lock</label>
+            <input type="text" id="lockName" placeholder="Enter target profile nickname to lock">
+        </div>
+
+        <!-- GROUP CHAT (GC) LOCK PANEL -->
+        <div id="gc-panel" class="panel-section">
+            <label>Facebook Group Chat (GC) ID</label>
+            <input type="text" id="gcId" placeholder="Enter Thread/GC Numeric ID">
+            <label>Locked GC Name (Fixed Name)</label>
+            <input type="text" id="lockedGcName" placeholder="Enter the permanent GC name">
+            <label>Auto-Kick Rule</label>
+            <select id="gcKickRule">
+                <option value="false">Only Revert Name (No Kick)</option>
+                <option value="true">Revert Name + Kick Name Changer</option>
+            </select>
+        </div>
+
+        <div class="btn-group">
+            <button type="button" class="btn btn-start" onclick="startBot()">Start Bot</button>
+            <button type="button" class="btn btn-stop" onclick="stopBot()">Stop Bot</button>
+        </div>
+    </form>
+
+    <h3>Bot Logs</h3>
+    <div class="logs-box" id="logs">
+        [00:00:00] Admin access verified. System core ready.
+    </div>
+</div>
+
+<script>
+    let currentAuthToken = "";
+
+    function verifyAdmin() {
+        const pass = document.getElementById('adminPass').value;
+        if(pass === "admin123") {
+            currentAuthToken = pass;
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('main-container').classList.remove('hidden');
+        } else {
+            alert("Invalid Admin Password!");
+        }
+    }
+
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel-section').forEach(p => p.classList.remove('active'));
+        
+        document.getElementById('tab-' + tabName).classList.add('active');
+        document.getElementById(tabName + '-panel').classList.add('active');
+    }
+
+    function addLog(text) {
+        const time = new Date().toLocaleTimeString();
+        const logs = document.getElementById('logs');
+        logs.innerHTML += `<br>[${time}] ${text}`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    async function startBot() {
+        const cookieFile = document.getElementById('cookieFile').files[0];
+        const abuseFile = document.getElementById('abuseFile').files[0];
+        const targetId = document.getElementById('targetId').value;
+        const delay = document.getElementById('delayTime').value;
+        const adminFbId = document.getElementById('adminFbId').value;
+        const lockName = document.getElementById('lockName').value;
+        const gcId = document.getElementById('gcId').value;
+        const lockedGcName = document.getElementById('lockedGcName').value;
+        const gcKickRule = document.getElementById('gcKickRule').value;
+
+        if (!cookieFile) return addLog("Error: Missing primary Cookie file.");
+
+        document.getElementById('statusText').style.backgroundColor = '#2ecc71';
+        document.getElementById('statusText').innerText = 'Status: Connected & Running';
+        addLog('Active instances building on Render...');
+
+        const formData = new FormData();
+        formData.append('cookie', cookieFile);
+        if (abuseFile) formData.append('abuse', abuseFile);
+        formData.append('targetId', targetId);
+        formData.append('delay', delay);
+        formData.append('adminFbId', adminFbId);
+        formData.append('lockName', lockName);
+        formData.append('gcId', gcId);
+        formData.append('lockedGcName', lockedGcName);
+        formData.append('gcKickRule', gcKickRule);
+        formData.append('password', currentAuthToken);
+
+        try {
+            const response = await fetch('/api/start-bot', { method: 'POST', body: formData });
+            const data = await response.json();
+            if(data.success) {
+                addLog('Bot Core Engine running live!');
+                if(lockName) addLog(`FB ID Nickname Guard active for target.`);
+                if(gcId) addLog(`GC Anti-Change Locker active for Thread: ${gcId}`);
+            } else {
+                addLog('Error: ' + data.log);
+            }
+        } catch (err) {
+            addLog('Server connection failed.');
+        }
+    }
+
+    function stopBot() {
+        document.getElementById('statusText').style.backgroundColor = '#e74c3c';
+        document.getElementById('statusText').innerText = 'Status: Disconnected';
+        addLog('Process execution stopped.');
+        fetch('/api/stop-bot', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: currentAuthToken}) });
+    }
+</script>
+</body>
+</html>
