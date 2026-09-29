@@ -1,4 +1,5 @@
-name": "devilxgod-locker-bot",
+{
+  "name": "devilxgod-locker-bot",
   "version": "1.0.0",
   "description": "Multi User Locker Bot UI Clone",
   "main": "server.js",
