@@ -1,9 +1,8 @@
 const express = require('express');
-const axios = require('axios');
 const path = require('path');
+const login = require('fca-project-origo'); // फेसबुक चैट API
 const app = express();
 
-// Render के लिए पोर्ट कॉन्फ़िगरेशन
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
@@ -11,70 +10,98 @@ app.use(express.static(__dirname));
 
 let activeInterval = null;
 let botRunning = false;
+let globalApi = null; // फेसबुक API सेशन स्टोर करने के लिए
 
-// होम रूट
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// बॉट चालू करने का API
-app.post('/api/start', async (req, res) => {
+// कुकी स्ट्रिंग को FCA फ़ॉर्मेट (AppState) में बदलने वाला फंक्शन
+function parseCookie(cookieStr) {
+    const appState = [];
+    const pairs = cookieStr.split(';');
+    pairs.forEach(pair => {
+        const [key, value] = pair.split('=');
+        if (key && value) {
+            appState.push({
+                key: key.trim(),
+                value: value.trim(),
+                domain: "facebook.com",
+                path: "/",
+                hostOnly: false,
+                creation: new Date().toISOString(),
+                lastAccessed: new Date().toISOString()
+            });
+        }
+    });
+    return appState;
+}
+
+// बॉट स्टार्ट API
+app.post('/api/start', (req, res) => {
     if (botRunning) {
         return res.json({ success: false, message: "बॉट पहले से ही चल रहा है!" });
     }
 
     const { primaryCookie, targetUid, delay, messages } = req.body;
     let index = 0;
-    botRunning = true;
+    
+    try {
+        const appState = parseCookie(primaryCookie);
 
-    console.log(`[START] Target UID: ${targetUid} | Delay: ${delay}s`);
+        // फेसबुक में कुकीज़ के ज़रिए लॉगिन करें
+        login({ appState: appState }, (err, api) => {
+            if (err) {
+                console.error("फेसबुक लॉगिन फ़ेल हुआ:", err);
+                return res.json({ success: false, message: "कुकीज़ अमान्य (Invalid) हैं या एक्सपायर हो चुकी हैं!" });
+            }
 
-    // 24/7 बैकग्राउंड मैसेजिंग लूप
-    activeInterval = setInterval(async () => {
-        if (!botRunning) return;
-
-        const currentMsg = messages[index];
-        
-        try {
-            // फेसबुक mbasic मैसेंजर स्क्रैपिंग / सेंडिंग एंडपॉइंट के लिए रिक्वेस्ट स्ट्रक्चर
-            // नोट: फेसबुक के कड़े सुरक्षा नियमों के कारण यहाँ कुकीज़ और टोकन को हेडर में पास करना होता है।
-            console.log(`Sending to ${targetUid}: ${currentMsg}`);
+            globalApi = api;
+            botRunning = true;
+            const generatedTaskId = Math.floor(1000 + Math.random() * 9000);
             
-            // यह ब्लॉक फेसबुक के बैकएंड एंडपॉइंट पर मैसेज पोस्ट करने की कोशिश करता है
-            /*
-            await axios.post(`https://facebook.com`, 
-                `body=${encodeURIComponent(currentMsg)}&tids=cid.c.${targetUid}`, 
-                {
-                    headers: {
-                        'Cookie': primaryCookie,
-                        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36'
+            // मैसेज भेजने का लूप चालू करें
+            activeInterval = setInterval(() => {
+                if (!botRunning) return;
+
+                const currentMsg = messages[index];
+                
+                // असली फेसबुक मैसेंजर सेंड फ़ंक्शन
+                api.sendMessage({ body: currentMsg }, targetUid, (msgErr) => {
+                    if (msgErr) {
+                        console.log(`[Error] ${targetUid} को मैसेज नहीं भेजा जा सका:`, msgErr);
+                    } else {
+                        console.log(`[Success] Sent to ${targetUid}: "${currentMsg}"`);
                     }
-                }
-            );
-            */
-        } catch (err) {
-            console.log("मैसेज भेजने में समस्या आई (चेक करें कुकी एक्सपायर तो नहीं हुई):", err.message);
-        }
+                });
 
-        // अगले मैसेज पर जाने के लिए लूप बढ़ाना
-        index = (index + 1) % messages.length;
+                index = (index + 1) % messages.length;
+            }, delay * 1000);
 
-    }, delay * 1000);
+            // फ्रंटएंड को कामयाबी का रिस्पॉन्स भेजें
+            res.json({ success: true, taskId: generatedTaskId });
+        });
 
-    res.json({ success: true });
+    } catch (setupErr) {
+        res.json({ success: false, message: "कुकी फॉर्मेट सही नहीं है!" });
+    }
 });
 
-// बॉट रोकने का API
+// बॉट स्टॉप API
 app.post('/api/stop', (req, res) => {
+    botRunning = false;
     if (activeInterval) {
         clearInterval(activeInterval);
         activeInterval = null;
     }
-    botRunning = false;
+    if (globalApi) {
+        globalApi.logout();
+        globalApi = null;
+    }
     console.log("[STOP] बॉट रोक दिया गया है।");
     res.json({ success: true });
 });
 
 app.listen(PORT, () => {
-    console.log(`सर्वर चालू है: http://localhost:${PORT}`);
+    console.log(`सर्वर एक्टिव है पोर्ट: ${PORT}`);
 });
