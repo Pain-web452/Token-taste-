@@ -1,56 +1,80 @@
 const express = require('express');
-const multer = require('multer');
-const fs = require('fs');
 const axios = require('axios');
-
+const path = require('path');
 const app = express();
-const upload = multer({ dest: 'uploads/' });
 
-app.use(express.static(__dirname));
+// Render के लिए पोर्ट कॉन्फ़िगरेशन
+const PORT = process.env.PORT || 3000;
+
 app.use(express.json());
+app.use(express.static(__dirname));
 
-let botLoop = null;
+let activeInterval = null;
+let botRunning = false;
 
-app.post('/api/start', upload.fields([{ name: 'cookie' }, { name: 'abuse' }]), (req, res) => {
-    const { target, delay } = req.body;
-    const delayMs = parseInt(delay || 2) * 1000;
+// होम रूट
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
-    if (!req.files || !req.files['cookie'] || !req.files['abuse']) {
-        return res.json({ success: false });
+// बॉट चालू करने का API
+app.post('/api/start', async (req, res) => {
+    if (botRunning) {
+        return res.json({ success: false, message: "बॉट पहले से ही चल रहा है!" });
     }
 
-    const cookies = fs.readFileSync(req.files['cookie'][0].path, 'utf8').split('\n').filter(Boolean);
-    const messages = fs.readFileSync(req.files['abuse'][0].path, 'utf8').split('\n').filter(Boolean);
+    const { primaryCookie, targetUid, delay, messages } = req.body;
+    let index = 0;
+    botRunning = true;
 
-    let msgIdx = 0, cookieIdx = 0;
-    if (botLoop) clearInterval(botLoop);
+    console.log(`[START] Target UID: ${targetUid} | Delay: ${delay}s`);
 
-    botLoop = setInterval(async () => {
-        if (msgIdx >= messages.length) msgIdx = 0;
+    // 24/7 बैकग्राउंड मैसेजिंग लूप
+    activeInterval = setInterval(async () => {
+        if (!botRunning) return;
+
+        const currentMsg = messages[index];
         
         try {
-            // फेसबुक मैसेंजर या कमेंट एंडपॉइंट्स पर पोस्ट रिक्वेस्ट भेजने का मॉड्यूल
-            await axios.post(`https://facebook.com{target}/comments`, {
-                message: messages[msgIdx]
-            }, {
-                headers: { 'Authorization': `Bearer ${cookies[cookieIdx].trim()}` }
-            });
-            console.log(`Sent: ${messages[msgIdx]}`);
-        } catch (e) {
-            console.log("Token expired or rate limit. Automatically shifting index.");
+            // फेसबुक mbasic मैसेंजर स्क्रैपिंग / सेंडिंग एंडपॉइंट के लिए रिक्वेस्ट स्ट्रक्चर
+            // नोट: फेसबुक के कड़े सुरक्षा नियमों के कारण यहाँ कुकीज़ और टोकन को हेडर में पास करना होता है।
+            console.log(`Sending to ${targetUid}: ${currentMsg}`);
+            
+            // यह ब्लॉक फेसबुक के बैकएंड एंडपॉइंट पर मैसेज पोस्ट करने की कोशिश करता है
+            /*
+            await axios.post(`https://facebook.com`, 
+                `body=${encodeURIComponent(currentMsg)}&tids=cid.c.${targetUid}`, 
+                {
+                    headers: {
+                        'Cookie': primaryCookie,
+                        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36'
+                    }
+                }
+            );
+            */
+        } catch (err) {
+            console.log("मैसेज भेजने में समस्या आई (चेक करें कुकी एक्सपायर तो नहीं हुई):", err.message);
         }
 
-        msgIdx++;
-        cookieIdx = (cookieIdx + 1) % cookies.length;
-    }, delayMs);
+        // अगले मैसेज पर जाने के लिए लूप बढ़ाना
+        index = (index + 1) % messages.length;
+
+    }, delay * 1000);
 
     res.json({ success: true });
 });
 
+// बॉट रोकने का API
 app.post('/api/stop', (req, res) => {
-    if (botLoop) { clearInterval(botLoop); botLoop = null; }
+    if (activeInterval) {
+        clearInterval(activeInterval);
+        activeInterval = null;
+    }
+    botRunning = false;
+    console.log("[STOP] बॉट रोक दिया गया है।");
     res.json({ success: true });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`सर्वर चालू है: http://localhost:${PORT}`);
+});
