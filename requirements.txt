@@ -1,2 +1,3 @@
+Flask
 fbchat-muqit
-nest-asyncio2
+gunicorn
