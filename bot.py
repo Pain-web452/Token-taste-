@@ -1,21 +1,20 @@
 import asyncio
-import json
 import os
-from fbchat_muqit import Client, ThreadType, Message
+from fbchat_muqit import Client, ThreadType
 
 # --- CONFIGURATION ---
 ADMIN_IDS = ["100000000000000"]  # Yahan apna Facebook UID daalein
 BOT_NICKNAME = "Group Manager Bot"
 
-# State storage (Render pe temporary rahega, restart pe reset ho jayega)
-GROUP_LOCK = {}       # {thread_id: True/False} - Group name/photo lock
-NICKNAME_LOCK = {}    # {thread_id: True/False} - Nickname lock
-PHOTO_LOCK = {}       # {thread_id: True/False} - Photo lock
+# State storage (Render restart pe reset ho jayega)
+GROUP_LOCK = {}
+NICKNAME_LOCK = {}
+PHOTO_LOCK = {}
+
 
 class GroupManagerBot(Client):
 
     async def onMessage(self, mid, author_id, message_object, thread_id, thread_type, **kwargs):
-        # Bot apne messages pe reply na kare
         if author_id == self.uid:
             return
 
@@ -23,22 +22,17 @@ class GroupManagerBot(Client):
         if not text.startswith("/"):
             return
 
-        # Sirf group chat mein commands
         if thread_type != ThreadType.GROUP:
             return
 
         is_admin = str(author_id) in ADMIN_IDS
         tid_str = str(thread_id)
 
-        # ============================
-        # 1. /tid - Group ID
-        # ============================
+        # /tid
         if text == "/tid":
             await message_object.reply(f"Group ID: {thread_id}")
 
-        # ============================
-        # 2. /uid <mention> - User ID
-        # ============================
+        # /uid
         elif text.startswith("/uid"):
             if message_object.mentions:
                 mentioned_id = message_object.mentions[0].user_id
@@ -46,9 +40,7 @@ class GroupManagerBot(Client):
             else:
                 await message_object.reply(f"Aapki ID: {author_id}")
 
-        # ============================
-        # 3. /botnick <name> - Bot ka nickname (Admin)
-        # ============================
+        # /botnick
         elif text.startswith("/botnick") and is_admin:
             global BOT_NICKNAME
             new_nick = text.replace("/botnick", "").strip()
@@ -58,9 +50,7 @@ class GroupManagerBot(Client):
             else:
                 await message_object.reply("Usage: /botnick <name>")
 
-        # ============================
-        # 4. /photolock on/off - Photo Lock (Admin)
-        # ============================
+        # /photolock
         elif text.startswith("/photolock") and is_admin:
             action = text.replace("/photolock", "").strip().lower()
             if action == "on":
@@ -72,37 +62,31 @@ class GroupManagerBot(Client):
             else:
                 await message_object.reply("Usage: /photolock on | /photolock off")
 
-        # ============================
-        # 5. /grouplock on/off - Group Name Lock (Admin)
-        # ============================
+        # /grouplock
         elif text.startswith("/grouplock") and is_admin:
             action = text.replace("/grouplock", "").strip().lower()
             if action == "on":
                 GROUP_LOCK[tid_str] = True
-                await message_object.reply("🔒 Group Name Lock: ON (Group ka naam change nahi ho sakta)")
+                await message_object.reply("🔒 Group Name Lock: ON")
             elif action == "off":
                 GROUP_LOCK[tid_str] = False
                 await message_object.reply("🔓 Group Name Lock: OFF")
             else:
                 await message_object.reply("Usage: /grouplock on | /grouplock off")
 
-        # ============================
-        # 6. /nicklock on/off - Nickname Lock (Admin)
-        # ============================
+        # /nicklock
         elif text.startswith("/nicklock") and is_admin:
             action = text.replace("/nicklock", "").strip().lower()
             if action == "on":
                 NICKNAME_LOCK[tid_str] = True
-                await message_object.reply("🔒 Nickname Lock: ON (Koi apna nickname change nahi kar sakta)")
+                await message_object.reply("🔒 Nickname Lock: ON")
             elif action == "off":
                 NICKNAME_LOCK[tid_str] = False
                 await message_object.reply("🔓 Nickname Lock: OFF")
             else:
                 await message_object.reply("Usage: /nicklock on | /nicklock off")
 
-        # ============================
-        # 7. /status - Sabhi locks ka status
-        # ============================
+        # /status
         elif text == "/status":
             status_msg = (
                 f"📊 **Group Lock Status**\n"
@@ -113,9 +97,7 @@ class GroupManagerBot(Client):
             )
             await message_object.reply(status_msg)
 
-        # ============================
-        # 8. /help - Commands list
-        # ============================
+        # /help
         elif text == "/help":
             help_text = (
                 "📜 **Available Commands:**\n"
@@ -131,32 +113,6 @@ class GroupManagerBot(Client):
             )
             await message_object.reply(help_text)
 
-    # ============================
-    # AUTO PROTECTION LOGIC
-    # ============================
-    async def onTitleChange(self, author_id, new_title, thread_id, **kwargs):
-        """Agar koi group ka naam change kare jab Group Lock ON ho."""
-        if GROUP_LOCK.get(str(thread_id)):
-            # Group ka naam wapas purana kar do
-            # Note: fbchat-muqit mein purana naam fetch karna limited hai
-            await self.sendMessage(
-                "⚠️ Group Name Lock ON hai! Naam change nahi kar sakte.",
-                thread_id,
-                ThreadType.GROUP
-            )
-
-    async def onNicknameChange(self, author_id, new_nickname, thread_id, **kwargs):
-        """Agar koi apna nickname change kare jab Nickname Lock ON ho."""
-        if NICKNAME_LOCK.get(str(thread_id)):
-            await self.sendMessage(
-                "⚠️ Nickname Lock ON hai! Nickname change nahi kar sakte.",
-                thread_id,
-                ThreadType.GROUP
-            )
-
-    # ============================
-    # WELCOME MESSAGE
-    # ============================
     async def onPeopleAdded(self, added_ids, author_id, thread_id, **kwargs):
         if self.uid not in added_ids:
             for user_id in added_ids:
@@ -172,7 +128,9 @@ class GroupManagerBot(Client):
 async def main():
     cookies_path = "./cookies.json"
     print("🚀 Bot start ho raha hai...")
-    bot = await GroupManagerBot.startSession(cookies_path)
+
+    # ✅ FIX: Client.startSession() direct use karein
+    bot = await Client.startSession(cookies_path)
 
     if await bot.isLoggedIn():
         print(f"✅ Logged in as UID: {bot.uid}")
@@ -180,6 +138,7 @@ async def main():
         await bot.listen()
     else:
         print("❌ Login failed! Cookies check karein.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
