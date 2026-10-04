@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARJUN THAKUR BOT PANEL</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #d000ff, #a100ff);
+            color: white;
+            padding: 15px;
+        }
+        .card {
+            background: rgba(255,255,255,0.15);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        h1 { text-align: center; font-size: 22px; margin-bottom: 5px; }
+        h3 { color: #ffe600; margin-top: 0; }
+        textarea, input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: none;
+            margin-top: 8px;
+            margin-bottom: 15px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea::placeholder, input::placeholder { color: #ddd; }
+        button {
+            padding: 14px 20px;
+            border: none;
+            border-radius: 12px;
+            background: #ff3366;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+        button:hover { background: #e6005c; }
+        .clear-btn { background: #ffcc00; color: black; width: auto; padding: 10px 20px; }
+        .logs {
+            background: rgba(0,0,0,0.4);
+            padding: 12px;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 250px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+            background: #ff3366;
+            margin-bottom: 10px;
+        }
+        .status-badge.online { background: #00c853; }
+        .header-title { text-align: center; }
+        .subtitle { text-align: center; font-size: 13px; color: #ffe600; margin-top: 0; }
+        .commands { line-height: 1.8; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="card header-title">
+    <h1>✨ 【 🌹 ❤️ ARJUN THAKUR BOT PANEL ❤️ 🌹 】 ✨</h1>
+    <p class="subtitle">🌸 Your Ultimate Facebook Bot Control Center 🌸</p>
+</div>
+
+<div class="card">
+    <h3>📝 Bot Logs</h3>
+    <button class="clear-btn" onclick="clearLogs()">Clear Logs</button>
+    <div class="logs" id="logBox">Loading...</div>
+</div>
+
+<div class="card">
+    <h3>👥 Joined Groups</h3>
+    <p id="groupBox">No groups info yet</p>
+</div>
+
+<div class="card">
+    <h3>Facebook AppState (JSON):</h3>
+    <textarea id="appstate" rows="5" placeholder="Paste your Facebook appState JSON here"></textarea>
+
+    <h3>Bot Prefix (Default "/"):</h3>
+    <input type="text" id="prefix" value="/" />
+
+    <h3>Admin Facebook ID:</h3>
+    <input type="text" id="adminId" placeholder="Your Facebook user ID" />
+
+    <button onclick="startBot()">Start Bot 👑</button>
+    <button onclick="stopBot()" style="background:#555;">Stop Bot</button>
+</div>
+
+<div class="card">
+    <h3>❤️ BOT COMMANDS ❤️</h3>
+    <div class="commands">
+        /group on ➡ Lock group name.<br>
+        /nickname on ➡ Lock all nicknames.<br>
+        /photolock on ➡ Lock group photo.<br>
+        /tid ➡ Get group ID.<br>
+        /uid ➡ Get user ID.<br>
+        /status ➡ Lock status.<br>
+        /help ➡ All commands.
+    </div>
+</div>
+
+<script>
+    async function updateLogs() {
+        const res = await fetch('/api/logs');
+        const data = await res.json();
+        const logBox = document.getElementById('logBox');
+        logBox.innerText = data.logs.join('\n') || 'No logs yet...';
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    async function startBot() {
+        const appstate = document.getElementById('appstate').value;
+        const prefix = document.getElementById('prefix').value;
+        const adminId = document.getElementById('adminId').value;
+
+        const res = await fetch('/api/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({appstate, prefix, admin_id: adminId})
+        });
+        const data = await res.json();
+        alert(JSON.stringify(data));
+        updateLogs();
+    }
+
+    async function stopBot() {
+        await fetch('/api/stop', {method: 'POST'});
+        updateLogs();
+    }
+
+    async function clearLogs() {
+        await fetch('/api/clear', {method: 'POST'});
+        updateLogs();
+    }
+
+    setInterval(updateLogs, 3000);
+    updateLogs();
+</script>
+
+</body>
+</html>
