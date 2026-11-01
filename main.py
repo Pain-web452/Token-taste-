@@ -18,7 +18,7 @@ import database as db
 import requests
 
 st.set_page_config(
-    page_title="R4J M1SHR4",
+    page_title="HASHIRAMA",
     page_icon="🔥",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -901,7 +901,7 @@ def login_page():
 def main_app():
     st.markdown("""
     <div class="main-header">
-        <h1>🔥 R4J M1SHR4 🔥</h1>
+        <h1>🔥 HASHIRAMA 🔥</h1>
         <p>PREMIUM FACEBOOK MESSAGE AUTOMATION TOOL</p>
     </div>
     """, unsafe_allow_html=True)
